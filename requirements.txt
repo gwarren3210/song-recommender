@@ -13,7 +13,14 @@ click
 tqdm
 soundfile
 requests
+streamlit>=1.28.0
 
 ipykernel
 ipython
 nbformat>=4.2.0
+
+# Storage backends (optional)
+python-dotenv>=1.0.0
+
+# Astra DB (required for astra backend)
+astrapy>=0.7.0

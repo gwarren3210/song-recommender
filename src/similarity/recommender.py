@@ -1,78 +1,75 @@
-import os
-import numpy as np
-import json
-import pandas as pd
-from .cosine import compute_similarity_matrix, get_top_k_similar
+from typing import Optional
+from src.storage.backend import StorageBackend
 
 class Recommender:
-    def __init__(self, embeddings_dir):
-        self.embeddings_dir = embeddings_dir
-        self.embeddings = None
+    def __init__(self, storage_backend: StorageBackend):
+        """        
+        Args:
+            storage_backend: Storage backend (required)
+        """
+        self.storage_backend = storage_backend
         self.metadata = []
-        self.similarity_matrix = None
-        self.load_data()
+        self.load_metadata_from_backend()
 
-    def load_data(self):
-        metadata_path = os.path.join(self.embeddings_dir, 'metadata.json')
-        if not os.path.exists(metadata_path):
-            print("No metadata found. Please run embedding first.")
-            return
-
-        with open(metadata_path, 'r') as f:
-            self.metadata = json.load(f)
-            
-        embedding_list = []
-        valid_metadata = []
+    def load_metadata_from_backend(self):
+        """
+        Load metadata from backend.
         
-        for meta in self.metadata:
-            emb_path = meta.get('embedding_path')
-            if emb_path and os.path.exists(emb_path):
-                emb = np.load(emb_path)
-                embedding_list.append(emb)
-                valid_metadata.append(meta)
-        
-        if embedding_list:
-            self.embeddings = np.vstack(embedding_list)
-            self.metadata = valid_metadata
-            print(f"Loaded {len(self.embeddings)} embeddings.")
-            
-            self.similarity_matrix = compute_similarity_matrix(self.embeddings)
-        else:
-            print("No valid embeddings found.")
+        Note: Metadata is loaded on-demand when needed for recommendations.
+        We don't preload all songs to avoid full table scans.
+        """
+        # Don't preload all songs - load on demand
+        self.metadata = []
 
-    def recommend(self, song_name=None, song_path=None, song_index=None, k=5):
-        if self.similarity_matrix is None:
-            print("Similarity matrix not computed.")
-            return []
-
-        if song_index is None:
-            if song_path:
-                # Try to find by exact path match
-                for i, meta in enumerate(self.metadata):
-                    # Check if path ends with the provided song_path (to handle relative vs absolute)
-                    if meta.get('path', '').endswith(song_path) or song_path.endswith(meta.get('path', '')):
-                        song_index = i
-                        break
-            
-            if song_index is None and song_name:
-                for i, meta in enumerate(self.metadata):
-                    if song_name.lower() in meta.get('filename', '').lower():
-                        song_index = i
-                        break
+    def recommend(self, song_name=None, song_path=None, song_id=None, k=5):
+        """
+        Get recommendations for a song using vector search.
         
-        if song_index is None:
+        Args:
+            song_name: Song name to search for
+            song_path: Path to song file
+            song_id: Song ID (preferred if available)
+            k: Number of recommendations
+            
+        Returns:
+            List of recommendation dictionaries
+        """
+        # Find song_id if not provided
+        if song_id is None:
+            song_id = self._find_song_id(song_name, song_path)
+        
+        if song_id is None:
             print(f"Song '{song_name or song_path}' not found.")
             return []
-
-        indices, scores = get_top_k_similar(self.similarity_matrix, song_index, k)
-                    
+        
+        # Get query embedding
+        query_embedding = self.storage_backend.get_embedding(song_id)
+        if query_embedding is None:
+            print(f"No embedding found for song_id: {song_id}")
+            return []
+        
+        # Search for similar embeddings using vector search
+        similar_items = self.storage_backend.search_similar(query_embedding, k=k+1)
+        
+        # Filter out the query song itself and format results
         recommendations = []
-        for idx, score in zip(indices, scores):
-            rec = self.metadata[idx].copy()
-            rec['similarity_score'] = float(score)
-            recommendations.append(rec)
-            
-        return recommendations
+        for item in similar_items:
+            if item.get('song_id') != song_id:
+                rec = item.get('metadata', {}).copy()
+                rec['similarity_score'] = item.get('similarity', 0.0)
+                rec['song_id'] = item.get('song_id')
+                recommendations.append(rec)
+        
+        return recommendations[:k]
     
-    def get_similarity_matrix(self):
-        return self.similarity_matrix
+    def _find_song_id(self, song_name=None, song_path=None) -> Optional[str]:
+        """
+        Find song_id by searching the database.
+        
+        Uses storage backend's efficient search method that searches
+        through all songs with minimal data transfer.
+        """
+        return self.storage_backend.find_song_id(
+            song_name=song_name,
+            song_path=song_path
+        )

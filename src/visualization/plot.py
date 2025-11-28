@@ -12,10 +12,6 @@ def plot_embeddings_static(projections, metadata, output_path=None):
     y = projections[:, 1]
     
     plt.scatter(x, y, alpha=0.7)
-    
-    for i, meta in enumerate(metadata):
-        pass
-        
     plt.title("Song Embeddings Projection")
     plt.xlabel("Dim 1")
     plt.ylabel("Dim 2")

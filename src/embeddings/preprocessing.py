@@ -1,6 +1,9 @@
 import librosa
 import torch
 import numpy as np
+import warnings
+warnings.filterwarnings("ignore", category=UserWarning, message=".*PySoundFile.*")
+warnings.filterwarnings("ignore", category=FutureWarning, message=".*audioread.*")
 
 def load_audio(file_path, target_sr=48000, duration=None):
     """
