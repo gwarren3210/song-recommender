@@ -76,15 +76,20 @@ def load_songs_page(
 def search_songs(
     storage,
     query: str,
-    limit: int = 20
+    limit: int = 20,
+    search_type: str = "hybrid"
 ) -> List[Dict]:
     """
     Search songs by query with caching.
+    
+    Uses server-side search if available (Postgres), otherwise falls back
+    to client-side filtering.
     
     Args:
         storage: Storage backend
         query: Search query
         limit: Maximum results (max 20)
+        search_type: "fts", "trigram", "hybrid", or "autocomplete"
         
     Returns:
         List of matching songs
@@ -92,15 +97,26 @@ def search_songs(
     # Enforce max limit
     limit = min(limit, 20)
     
-    # TODO: INEFFICIENT - Loads all songs and filters client-side
-    # This doesn't scale and wastes bandwidth. Should implement server-side search.
-    # See ISSUES.md #3 for details.
-    all_songs = storage.list_songs(limit=limit)
-    
-    if not query:
+    if not query or not query.strip():
+        all_songs = storage.list_songs(limit=limit)
         cache_songs(all_songs)
         return all_songs
     
+    # Use server-side search if available (Postgres backend)
+    if hasattr(storage, 'search_songs'):
+        try:
+            results = storage.search_songs(
+                query=query.strip(),
+                limit=limit,
+                search_type=search_type
+            )
+            cache_songs(results)
+            return results
+        except Exception as e:
+            print(f"Error in server-side search, falling back: {e}")
+    
+    # Fallback: client-side filtering (for non-Postgres backends)
+    all_songs = storage.list_songs(limit=limit)
     query_lower = query.lower()
     filtered = [
         s for s in all_songs

@@ -1,8 +1,34 @@
-"""Helper functions for computing statistics from sampled songs."""
+"""Helper functions for computing statistics from database."""
 
 from typing import Dict, List
 from collections import Counter
 from src.streamlit_app.cache.songCache import load_songs_page
+
+
+def compute_stats_from_database(storage) -> Dict:
+    """
+    Compute statistics from the entire database.
+    
+    Uses database aggregations for accurate stats.
+    
+    Args:
+        storage: Storage backend
+        
+    Returns:
+        Dictionary with statistics
+    """
+    # Use database stats if available (Postgres backend)
+    if hasattr(storage, 'get_database_stats'):
+        try:
+            stats = storage.get_database_stats()
+            return stats
+        except Exception as e:
+            print(f"Error getting database stats: {e}")
+            # Fallback to sample method
+            return compute_stats_from_sample(storage, sample_size=100)
+    
+    # Fallback: use sample method for non-Postgres backends
+    return compute_stats_from_sample(storage, sample_size=100)
 
 
 def compute_stats_from_sample(storage, sample_size: int = 100) -> Dict:

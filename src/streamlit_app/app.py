@@ -23,10 +23,8 @@ from src.similarity.recommender import Recommender
 from src.streamlit_app.components.songCard import render_song_card
 from src.streamlit_app.components.audioPlayer import render_audio_player
 from src.streamlit_app.pages.dashboard import render_dashboard
-from src.streamlit_app.pages.search import render_search
 from src.streamlit_app.pages.browse import render_browse
 from src.streamlit_app.pages.recommendations import render_recommendations
-from src.streamlit_app.cache.songCache import get_song_cache
 
 
 def init_session_state():
@@ -71,25 +69,19 @@ def main():
     
     page = st.sidebar.radio(
         "Navigation",
-        ["Dashboard", "Search", "Browse", "Recommendations"],
+        ["Dashboard", "Recommendations", "Browse"],
         index=0
     )
     
     st.sidebar.markdown("---")
     
-    # Display cache stats
-    cache = get_song_cache()
-    st.sidebar.metric("Cached Songs", f"{cache.size()}/100")
-    
     # Main content area
     if page == "Dashboard":
         render_dashboard()
-    elif page == "Search":
-        render_search()
-    elif page == "Browse":
-        render_browse()
     elif page == "Recommendations":
         render_recommendations()
+    elif page == "Browse":
+        render_browse()
 
 
 if __name__ == "__main__":

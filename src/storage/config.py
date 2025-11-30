@@ -21,18 +21,18 @@ except ImportError:
 class StorageConfig:
     """Configuration for storage backends."""
     
-    backend_type: str = "local"
+    backend_type: str = "postgres"
     # Local storage config
     local_audio_dir: str = "data/audio"
     local_embeddings_dir: str = "data/embeddings"
     
-    # Astra DB config
-    astra_db_id: Optional[str] = None
-    astra_db_region: Optional[str] = None
-    astra_db_keyspace: str = "default_keyspace"
-    astra_db_application_token: Optional[str] = None
-    astra_db_api_endpoint: Optional[str] = None
-    astra_db_secure_bundle_path: Optional[str] = None  # Not used with Data API, kept for compatibility
+    # Postgres/Neon config
+    postgres_host: Optional[str] = None
+    postgres_port: Optional[int] = None
+    postgres_database: Optional[str] = None
+    postgres_user: Optional[str] = None
+    postgres_password: Optional[str] = None
+    postgres_sslmode: str = "require"  # Default to require SSL for Neon
     
     @classmethod
     def from_env(cls) -> 'StorageConfig':
@@ -42,16 +42,17 @@ class StorageConfig:
         Returns:
             StorageConfig instance
         """
+        postgres_port = os.getenv('POSTGRES_PORT')
         return cls(
-            backend_type=os.getenv('STORAGE_BACKEND', 'local'),
+            backend_type=os.getenv('STORAGE_BACKEND', 'postgres'),
             local_audio_dir=os.getenv('LOCAL_AUDIO_DIR', 'data/audio'),
             local_embeddings_dir=os.getenv('LOCAL_EMBEDDINGS_DIR', 'data/embeddings'),
-            astra_db_id=os.getenv('ASTRA_DB_ID'),
-            astra_db_region=os.getenv('ASTRA_DB_REGION', 'us-east-1'),
-            astra_db_keyspace=os.getenv('ASTRA_DB_KEYSPACE', 'default_keyspace'),
-            astra_db_application_token=os.getenv('ASTRA_DB_APPLICATION_TOKEN'),
-            astra_db_api_endpoint=os.getenv('ASTRA_DB_API_ENDPOINT'),
-            astra_db_secure_bundle_path=os.getenv('ASTRA_DB_SECURE_BUNDLE_PATH'),
+            postgres_host=os.getenv('POSTGRES_HOST'),
+            postgres_port=int(postgres_port) if postgres_port else None,
+            postgres_database=os.getenv('POSTGRES_DATABASE'),
+            postgres_user=os.getenv('POSTGRES_USER'),
+            postgres_password=os.getenv('POSTGRES_PASSWORD'),
+            postgres_sslmode=os.getenv('POSTGRES_SSLMODE', 'require'),
         )
     
     def to_dict(self) -> dict:
@@ -60,11 +61,11 @@ class StorageConfig:
             'backend_type': self.backend_type,
             'local_audio_dir': self.local_audio_dir,
             'local_embeddings_dir': self.local_embeddings_dir,
-            'astra_db_id': self.astra_db_id,
-            'astra_db_region': self.astra_db_region,
-            'astra_db_keyspace': self.astra_db_keyspace,
-            'astra_db_application_token': self.astra_db_application_token,
-            'astra_db_api_endpoint': self.astra_db_api_endpoint,
-            'astra_db_secure_bundle_path': self.astra_db_secure_bundle_path,
+            'postgres_host': self.postgres_host,
+            'postgres_port': self.postgres_port,
+            'postgres_database': self.postgres_database,
+            'postgres_user': self.postgres_user,
+            'postgres_password': self.postgres_password,
+            'postgres_sslmode': self.postgres_sslmode,
         }
 

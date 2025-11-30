@@ -4,7 +4,11 @@ import streamlit as st
 from typing import Dict, Optional
 
 
-def render_song_card(song: Dict, show_preview: bool = True, show_similarity: bool = False):
+def render_song_card(
+    song: Dict,
+    show_preview: bool = True,
+    show_similarity: bool = False
+):
     """
     Render a song card with artwork, metadata, and preview.
     
@@ -21,7 +25,10 @@ def render_song_card(song: Dict, show_preview: bool = True, show_similarity: boo
         if artwork_url:
             st.image(artwork_url, width=150)
         else:
-            st.image("https://via.placeholder.com/150?text=No+Artwork", width=150)
+            placeholder_url = (
+                "https://via.placeholder.com/150?text=No+Artwork"
+            )
+            st.image(placeholder_url, width=150)
     
     with col2:
         # Song title
@@ -53,16 +60,25 @@ def render_song_card(song: Dict, show_preview: bool = True, show_similarity: boo
         # Preview URL
         preview_url = song.get('preview_url')
         if show_preview and preview_url:
-            from src.streamlit_app.components.audioPlayer import render_audio_player
-            render_audio_player(preview_url)
+            from src.streamlit_app.components.audioPlayer import (
+                render_audio_player
+            )
+            song_id = song.get('song_id')
+            render_audio_player(preview_url, song_id=song_id)
         
         # Links
-        track_view_url = song.get('track_view_url') or song.get('trackViewUrl')
+        track_view_url = (
+            song.get('track_view_url') or song.get('trackViewUrl')
+        )
         if track_view_url:
             st.markdown(f"[Open in Apple Music]({track_view_url})")
 
 
-def render_song_grid(songs: list, cols: int = 3, show_preview: bool = True):
+def render_song_grid(
+    songs: list,
+    cols: int = 3,
+    show_preview: bool = True
+):
     """
     Render a grid of song cards.
     

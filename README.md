@@ -118,6 +118,26 @@ The song name is the split[1] of the file name, so if the file is named "Artist 
 python src/cli.py recommend --song_name "Song Name"
 ```
 
+#### How Recommendations Work
+
+The recommendation system uses **vector similarity search** to find musically similar songs:
+
+1. **Embedding Generation**: Each song is converted into a high-dimensional vector embedding using the LAION-CLAP model. The embedding captures acoustic and semantic features of the audio.
+
+2. **Query Processing**: When you request recommendations for a song, the system:
+   - Retrieves the embedding vector for the query song
+   - Searches the database for songs with similar embedding vectors
+   - Uses cosine similarity to measure how similar two embeddings are
+
+3. **Similarity Search**: The system uses PostgreSQL with pgvector extension to perform efficient vector similarity search. It finds the top-k most similar songs based on cosine distance between embedding vectors.
+
+4. **Results**: Recommendations are returned sorted by similarity score, with the most similar songs first.
+
+**Note on Current Limitations**: The recommendation quality is currently limited by several factors:
+- **Limited Similar Songs**: The database may not have enough songs that are truly similar to the query song, leading to recommendations that may not feel musically related.
+- **Embedding Quality**: The LAION-CLAP embedder may not capture all the musical nuances that make songs feel similar to human listeners. The model focuses on acoustic features but may miss stylistic, genre, or mood similarities.
+- **Preview-Only Embeddings**: Songs are embedded using only 30-second preview clips rather than full-length tracks. This means the embedding may not capture the full musical structure, variations, or key moments that define a song's character.
+
 ### Visualize
 ```bash
 python src/cli.py visualize --output_file visualization.html
@@ -148,3 +168,28 @@ Features:
 - Similarity scores visualization
 - Direct links to Apple Music
 - Responsive design with sidebar navigation
+
+## Known Limitations
+
+### Recommendation Quality
+
+The current recommendation system has several limitations that affect recommendation quality:
+
+1. **Limited Similar Songs in Database**: The recommendation system can only suggest songs that exist in the database. If the database lacks diverse songs or songs similar to the query, recommendations may feel unrelated.
+
+2. **Embedding Model Limitations**: The LAION-CLAP embedder may not fully capture the musical characteristics that make songs feel similar to human listeners. While it captures acoustic features well, it may miss:
+   - Stylistic similarities (e.g., both songs have a similar "vibe")
+   - Genre nuances and sub-genre distinctions
+   - Mood and emotional characteristics
+   - Production style and instrumentation choices
+
+3. **Preview-Only Embeddings**: Songs are embedded using 30-second preview clips from Apple Music rather than full-length tracks. This limitation means:
+   - The embedding may miss key musical moments (chorus, bridge, outro)
+   - Variations and dynamics throughout the song are not captured
+   - The embedding represents only a small portion of the complete musical work
+
+These limitations mean that while the system can find songs with similar acoustic features, the recommendations may not always align with human perception of musical similarity. Future improvements could include:
+- Using full-length track embeddings when available
+- Combining multiple embedding models or features
+- Incorporating metadata-based recommendations (genre, artist, year)
+- Fine-tuning the embedding model on music similarity tasks

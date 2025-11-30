@@ -21,10 +21,11 @@ except ImportError:
 from src.embeddings.embedder import AudioEmbedder
 from src.similarity.recommender import Recommender
 from src.visualization.projector import Projector
-from src.visualization.plot import plot_embeddings_static, plot_embeddings_interactive
+from src.visualization.plot import (
+    plot_embeddings_static,
+    plot_embeddings_interactive
+)
 from src.storage.factory import create_storage_backend
-from src.astra.client import AstraClient
-from src.astra.schema import create_schema, drop_schema, create_genre_index
 from src.apple_api.manager import AppleMusicManager
 
 @click.group()
@@ -36,7 +37,7 @@ def cli():
 @click.option('--input_dir', required=True, help='Directory containing audio files')
 @click.option('--model', default='laion/clap-htsat-unfused', help='CLAP model name')
 def embed(input_dir, model):
-    """Embeds all audio files and stores in Astra DB."""
+    """Embeds all audio files and stores in the database."""
     storage = create_storage_backend()
     embedder = AudioEmbedder(storage_backend=storage, model_name=model)
     embedder.embed_library(input_dir)
@@ -45,12 +46,71 @@ def embed(input_dir, model):
 @click.option('--song_path', help='Path to the song file to recommend for')
 @click.option('--song_name', help='Name of the song to recommend for')
 @click.option('--song_id', help='Song ID (preferred if available)')
+@click.option('--search', help='Search query to find a song (searches entire database)')
 @click.option('--k', default=5, help='Number of recommendations')
-def recommend(song_path, song_name, song_id, k):
-    """Finds similar songs using vector search in Astra DB."""
+@click.option('--interactive', is_flag=True, help='Interactively search and select a song')
+def recommend(song_path, song_name, song_id, search, k, interactive):
+    """Finds similar songs using vector search in the database."""
     storage = create_storage_backend()
     recommender = Recommender(storage_backend=storage)
     
+    # If search query provided, use advanced search to find song
+    if search:
+        if not hasattr(storage, 'search_songs'):
+            click.echo(
+                "Error: Search requires Postgres backend with "
+                "advanced search enabled."
+            )
+            return
+        
+        click.echo(f"Searching for '{search}'...")
+        search_results = storage.search_songs(
+            query=search,
+            limit=10,
+            search_type="hybrid"
+        )
+        
+        if not search_results:
+            click.echo(f"No songs found matching '{search}'.")
+            return
+        
+        if len(search_results) == 1:
+            # Auto-select if only one result
+            selected = search_results[0]
+            song_id = selected.get('song_id')
+            artist = selected.get('artist', 'Unknown')
+            title = selected.get('title', 'Unknown')
+            click.echo(f"Found: {artist} - {title}")
+        else:
+            # Let user choose
+            click.echo(f"\nFound {len(search_results)} songs:")
+            for i, song in enumerate(search_results, 1):
+                title = song.get('title', 'Unknown')
+                artist = song.get('artist', 'Unknown Artist')
+                click.echo(f"{i}. {artist} - {title}")
+            
+            if interactive:
+                choice = click.prompt(
+                    f"\nSelect a song (1-{len(search_results)})",
+                    type=int
+                )
+                if 1 <= choice <= len(search_results):
+                    selected = search_results[choice - 1]
+                    song_id = selected.get('song_id')
+                    artist = selected.get('artist', 'Unknown')
+                    title = selected.get('title', 'Unknown')
+                    click.echo(f"Selected: {artist} - {title}")
+                else:
+                    click.echo("Invalid selection.")
+                    return
+            else:
+                click.echo(
+                    "\nUse --interactive flag to select from multiple "
+                    "results, or use --song_id with a specific ID."
+                )
+                return
+    
+    # Get recommendations
     recommendations = recommender.recommend(
         song_name=song_name,
         song_path=song_path,
@@ -62,23 +122,86 @@ def recommend(song_path, song_name, song_id, k):
         click.echo("No recommendations found.")
         return
 
-    click.echo(f"Top {k} recommendations:")
+    click.echo(f"\nTop {k} recommendations:")
     for i, rec in enumerate(recommendations, 1):
-        filename = rec.get('filename', rec.get('title', 'Unknown'))
+        title = rec.get('title', rec.get('filename', 'Unknown'))
+        artist = rec.get('artist', 'Unknown Artist')
         score = rec.get('similarity_score', 0.0)
-        click.echo(f"{i}. {filename} (Score: {score:.4f})")
+        click.echo(f"{i}. {artist} - {title} (Score: {score:.4f})")
 
 @cli.command()
-@click.option('--output_file', default='visualization.html', help='Output file for visualization')
-@click.option('--method', default='umap', type=click.Choice(['umap', 'tsne']), help='Projection method')
+@click.option('--query', required=True, help='Search query')
+@click.option('--limit', default=10, help='Maximum number of results')
+@click.option(
+    '--search-type',
+    type=click.Choice(['hybrid', 'fts', 'trigram', 'autocomplete']),
+    default='hybrid',
+    help='Search type: hybrid (default), fts, trigram, or autocomplete'
+)
+@click.option('--show-scores', is_flag=True, help='Show relevance scores')
+def search(query, limit, search_type, show_scores):
+    """Search songs using advanced search (FTS, trigram, hybrid)."""
+    storage = create_storage_backend()
+    
+    # Check if search_songs method exists (Postgres backend)
+    if not hasattr(storage, 'search_songs'):
+        click.echo(
+            "Error: Advanced search is only available with "
+            "Postgres backend."
+        )
+        return
+    
+    click.echo(f"Searching for '{query}' using {search_type} mode...")
+    
+    try:
+        results = storage.search_songs(
+            query=query,
+            limit=limit,
+            search_type=search_type
+        )
+        
+        if not results:
+            click.echo("No results found.")
+            return
+        
+        click.echo(f"\nFound {len(results)} result(s):\n")
+        for i, song in enumerate(results, 1):
+            title = song.get('title', 'Unknown')
+            artist = song.get('artist', 'Unknown')
+            score = song.get('_search_score', 0.0) if show_scores else None
+            
+            if score is not None:
+                click.echo(f"{i}. {artist} - {title} (Score: {score:.4f})")
+            else:
+                click.echo(f"{i}. {artist} - {title}")
+                
+    except Exception as e:
+        click.echo(f"Error during search: {e}", err=True)
+        import traceback
+        traceback.print_exc()
+
+@cli.command()
+@click.option(
+    '--output_file',
+    default='visualization.html',
+    help='Output file for visualization'
+)
+@click.option(
+    '--method',
+    default='umap',
+    type=click.Choice(['umap', 'tsne']),
+    help='Projection method'
+)
 def visualize(output_file, method):
-    """Visualizes the embeddings from Astra DB."""
+    """Visualizes the embeddings from the database."""
     storage = create_storage_backend()
     recommender = Recommender(storage_backend=storage)
     
     # Load all embeddings for visualization
-    # TODO: BROKEN - recommender.metadata is intentionally empty (see recommender.py:22)
-    # This will always return empty list. Should load songs directly from storage instead.
+    # TODO: BROKEN - recommender.metadata is intentionally empty
+    # (see recommender.py:22)
+    # This will always return empty list. Should load songs directly
+    # from storage instead.
     # See ISSUES.md #1 for details.
     embeddings_list = []
     valid_metadata = []
@@ -92,7 +215,7 @@ def visualize(output_file, method):
                 valid_metadata.append(meta)
     
     if not embeddings_list:
-        click.echo("No embeddings found in Astra DB.")
+        click.echo("No embeddings found in the database.")
         return
     
     embeddings_array = np.vstack(embeddings_list)
@@ -100,17 +223,33 @@ def visualize(output_file, method):
     projections = projector.fit_transform(embeddings_array)
     
     if output_file.endswith('.html'):
-        plot_embeddings_interactive(projections, valid_metadata, output_path=output_file)
+        plot_embeddings_interactive(
+            projections,
+            valid_metadata,
+            output_path=output_file
+        )
     else:
         plot_embeddings_static(projections, valid_metadata, output_path=output_file)
 
 @cli.command()
-@click.option('--query', required=True, help='Search query (e.g. artist or song name)')
+@click.option(
+    '--query',
+    required=True,
+    help='Search query (e.g. artist or song name)'
+)
 @click.option('--limit', default=10, help='Number of songs to download')
-@click.option('--output_dir', default='data/audio', help='Temporary directory to save audio files')
-@click.option('--auto-embed', is_flag=True, help='Automatically embed and store in Astra DB')
+@click.option(
+    '--output_dir',
+    default='data/audio',
+    help='Temporary directory to save audio files'
+)
+@click.option(
+    '--auto-embed',
+    is_flag=True,
+    help='Automatically embed and store in database'
+)
 def download(query, limit, output_dir, auto_embed):
-    """Downloads song previews from Apple Music and optionally stores in Astra DB."""
+    """Downloads song previews from Apple Music and optionally stores in the database."""
     manager = AppleMusicManager()
     files = manager.download_tracks(query, limit, output_dir)
     click.echo(f"Downloaded {len(files)} files to {output_dir}")
@@ -118,7 +257,7 @@ def download(query, limit, output_dir, auto_embed):
     if auto_embed:
         storage = create_storage_backend()
         embedder = AudioEmbedder(storage_backend=storage)
-        click.echo("Embedding and uploading to Astra DB...")
+        click.echo("Embedding and uploading to the database...")
         for file_path in files:
             try:
                 # Embed and store
@@ -131,19 +270,40 @@ def download(query, limit, output_dir, auto_embed):
                     meta['filename'] = Path(file_path).name
                     meta['path'] = file_path
                     storage.store_metadata(song_id, meta)
-                    click.echo(f"Embedded and stored {Path(file_path).name} (ID: {song_id})")
+                    filename = Path(file_path).name
+                    click.echo(
+                        f"Embedded and stored {filename} (ID: {song_id})"
+                    )
             except Exception as e:
                 click.echo(f"Error processing {file_path}: {e}")
 
 @cli.command()
-@click.option('--track-urls-file', help='Path to JSON file containing list of track URLs, or text file with URLs (one per line)')
-@click.option('--track-url', multiple=True, help='Apple Music track URL (can be used multiple times)')
-@click.option('--temp-dir', default='data/temp', help='Temporary directory for audio downloads (deleted after embedding)')
+@click.option(
+    '--track-urls-file',
+    help=(
+        'Path to JSON file containing list of track URLs, '
+        'or text file with URLs (one per line)'
+    )
+)
+@click.option(
+    '--track-url',
+    multiple=True,
+    help='Apple Music track URL (can be used multiple times)'
+)
+@click.option(
+    '--temp-dir',
+    default='data/temp',
+    help=(
+        'Temporary directory for audio downloads '
+        '(deleted after embedding)'
+    )
+)
 def import_playlist(track_urls_file, track_url, temp_dir):
-    """Import songs from Apple Music track URLs into the database using iTunes Lookup API.
+    """Import songs from Apple Music track URLs using iTunes Lookup API.
     
-    Either --track-urls-file (JSON file with list of URLs, or text file with one URL per line) 
-    or --track-url (can be used multiple times) must be provided.
+    Either --track-urls-file (JSON file with list of URLs, or text file
+    with one URL per line) or --track-url (can be used multiple times)
+    must be provided.
     """
     from src.apple_api.client import AppleMusicClient
     from src.apple_api.downloader import download_preview
@@ -197,7 +357,11 @@ def import_playlist(track_urls_file, track_url, temp_dir):
     tracks = client.get_tracks_from_urls(track_urls)
     
     if not tracks:
-        click.echo("No tracks found. Check that the URLs are valid Apple Music/iTunes track URLs.", err=True)
+        click.echo(
+            "No tracks found. Check that the URLs are valid "
+            "Apple Music/iTunes track URLs.",
+            err=True
+        )
         return
     
     click.echo(f"Found {len(tracks)} tracks in playlist")
@@ -258,43 +422,12 @@ def import_playlist(track_urls_file, track_url, temp_dir):
                 # Generate a new UUID for song ID
                 song_id = str(uuid.uuid4())
                 
-                # Store song metadata with preview URL
-                duration_ms = track_data.get("trackTimeMillis")
-                song_data = {
-                    "song_id": uuid.UUID(song_id),
-                    "filename": filename,  # Keep for reference, but file is not stored
-                    "artist": artist,
-                    "title": title,
-                    "duration": duration_ms / 1000.0 if duration_ms else None,
-                    "genre": track_data.get("primaryGenreName"),
-                    "preview_url": preview_url,  # Store preview URL, not local path
-                    "track_id": track_data.get("trackId"),
-                    "collection_id": track_data.get("collectionId"),
-                    "collection_name": track_data.get("collectionName"),
-                    "artist_view_url": track_data.get("artistViewUrl"),
-                    "collection_view_url": track_data.get("collectionViewUrl"),
-                    "track_view_url": track_data.get("trackViewUrl"),
-                    "artwork_url": track_data.get("artworkUrl100"),
-                    "release_date": track_data.get("releaseDate"),
-                    "track_time_millis": duration_ms,
-                    "created_at": datetime.now(timezone.utc),
-                    "updated_at": datetime.now(timezone.utc),
-                    "metadata": {}
-                }
-                
-                # Insert song record
-                storage.songs_table.insert_one(song_data)
-                
-                # Add genre to genres table
-                genre = track_data.get("primaryGenreName")
-                if genre:
-                    storage._add_genre(genre)
-                
-                # Store embedding
+                # Store embedding first
                 storage.store_embedding(song_id, embedding)
                 
-                # Store additional metadata
+                # Store metadata with preview URL
                 from src.embeddings.preprocessing import extract_metadata
+                duration_ms = track_data.get("trackTimeMillis")
                 meta = extract_metadata(temp_path)
                 meta['filename'] = filename
                 meta['path'] = preview_url  # Store preview URL as path reference
@@ -306,15 +439,24 @@ def import_playlist(track_urls_file, track_url, temp_dir):
                 meta['track_id'] = track_data.get("trackId")
                 meta['collectionName'] = track_data.get("collectionName")
                 meta['collectionId'] = track_data.get("collectionId")
+                meta['collection_name'] = track_data.get("collectionName")
+                meta['collection_id'] = track_data.get("collectionId")
                 meta['artistViewUrl'] = track_data.get("artistViewUrl")
+                meta['artist_view_url'] = track_data.get("artistViewUrl")
                 meta['collectionViewUrl'] = track_data.get("collectionViewUrl")
+                meta['collection_view_url'] = track_data.get("collectionViewUrl")
                 meta['trackViewUrl'] = track_data.get("trackViewUrl")
+                meta['track_view_url'] = track_data.get("trackViewUrl")
                 meta['artworkUrl'] = track_data.get("artworkUrl100")
+                meta['artwork_url'] = track_data.get("artworkUrl100")
                 meta['releaseDate'] = track_data.get("releaseDate")
+                meta['release_date'] = track_data.get("releaseDate")
                 meta['trackTimeMillis'] = duration_ms
+                meta['track_time_millis'] = duration_ms
                 if duration_ms:
                     meta['duration'] = duration_ms / 1000.0
                 
+                # Store metadata (this also handles genre insertion)
                 storage.store_metadata(song_id, meta)
                 
                 click.echo(f"  ✓ Stored in database (ID: {song_id})")
@@ -350,66 +492,6 @@ def import_playlist(track_urls_file, track_url, temp_dir):
     click.echo(f"  Failed: {failed}")
 
 
-@cli.command()
-def init_astra():
-    """Initialize Astra DB schema using Data API."""
-    try:
-        # Ensure .env is loaded before creating client
-        from dotenv import load_dotenv
-        env_path = Path(__file__).parent.parent / '.env'
-        if env_path.exists():
-            load_dotenv(env_path)
-        
-        client = AstraClient()
-        create_schema(client)
-        click.echo("Astra DB schema initialized successfully!")
-    except ImportError as e:
-        click.echo(f"Error: astrapy is required. Install it with: pip install astrapy", err=True)
-    except Exception as e:
-        click.echo(f"Error initializing schema: {e}", err=True)
-
-@cli.command()
-@click.option('--confirm', is_flag=True, help='Confirm that you want to drop all tables')
-def drop_tables(confirm):
-    """Drop all tables in Astra DB."""
-    if not confirm:
-        click.echo("Error: This will delete all data! Use --confirm to proceed.", err=True)
-        click.echo("Usage: python src/cli.py drop-tables --confirm")
-        return
-    
-    try:
-        # Ensure .env is loaded before creating client
-        from dotenv import load_dotenv
-        env_path = Path(__file__).parent.parent / '.env'
-        if env_path.exists():
-            load_dotenv(env_path)
-        
-        client = AstraClient()
-        drop_schema(client)
-        click.echo("All tables dropped successfully!")
-    except ImportError as e:
-        click.echo(f"Error: astrapy is required. Install it with: pip install astrapy", err=True)
-    except Exception as e:
-        click.echo(f"Error dropping tables: {e}", err=True)
-
-
-@cli.command()
-def create_genre_idx():
-    """Create index on genre column in songs table."""
-    try:
-        # Ensure .env is loaded before creating client
-        from dotenv import load_dotenv
-        env_path = Path(__file__).parent.parent / '.env'
-        if env_path.exists():
-            load_dotenv(env_path)
-        
-        client = AstraClient()
-        create_genre_index(client)
-        click.echo("Genre index created successfully!")
-    except ImportError as e:
-        click.echo(f"Error: astrapy is required. Install it with: pip install astrapy", err=True)
-    except Exception as e:
-        click.echo(f"Error creating genre index: {e}", err=True)
 
 @cli.command()
 def populate_genres():
@@ -446,73 +528,29 @@ def populate_genres():
             page += 1
         
         # Add all genres to genres table
-        for genre in genres_set:
-            storage._add_genre(genre)
+        # Genres are automatically added when storing metadata,
+        # but we can add them directly if needed
+        # This only works with Postgres backend
+        if hasattr(storage, '_get_connection'):
+            conn = storage._get_connection()
+            try:
+                with conn.cursor() as cur:
+                    for genre in genres_set:
+                        cur.execute("""
+                            INSERT INTO genres (genre) VALUES (%s)
+                            ON CONFLICT (genre) DO NOTHING
+                        """, (genre,))
+                conn.commit()
+            finally:
+                storage._put_connection(conn)
+        else:
+            # For other backends, genres are added automatically when storing metadata
+            click.echo("Note: Genres will be added automatically when storing song metadata")
         
         click.echo(f"✓ Populated genres table with {len(genres_set)} genres")
     except Exception as e:
         click.echo(f"Error populating genres: {e}", err=True)
 
-@cli.command()
-@click.option('--embeddings_dir', default='data/embeddings', help='Directory containing local embeddings')
-@click.option('--audio_dir', default='data/audio', help='Directory containing local audio files')
-def migrate_to_astra(embeddings_dir, audio_dir):
-    """Migrate local data to Astra DB."""
-    click.echo("Starting migration to Astra DB...")
-    
-    # Create Astra storage backend
-    astra_storage = create_storage_backend()
-    embedder = AudioEmbedder(storage_backend=astra_storage)
-    
-    # Load local metadata
-    metadata_file = Path(embeddings_dir) / 'metadata.json'
-    if not metadata_file.exists():
-        click.echo(f"Metadata file not found: {metadata_file}", err=True)
-        return
-    
-    import json
-    with open(metadata_file, 'r') as f:
-        local_metadata = json.load(f)
-    
-    click.echo(f"Found {len(local_metadata)} songs to migrate...")
-    
-    # Migrate each song
-    migrated = 0
-    
-    for meta in local_metadata:
-        try:
-            file_path = meta.get('path')
-            if not file_path or not Path(file_path).exists():
-                # Try audio directory
-                filename = meta.get('filename', '')
-                file_path = Path(audio_dir) / filename
-                if not file_path.exists():
-                    click.echo(f"Skipping {filename} - file not found")
-                    continue
-            
-            # Get or create embedding
-            emb_path = meta.get('embedding_path')
-            if emb_path and Path(emb_path).exists():
-                embedding = np.load(emb_path)
-            else:
-                # Generate embedding
-                embedding = embedder.embed_file(str(file_path))
-                if embedding is None:
-                    click.echo(f"Skipping {filename} - embedding failed")
-                    continue
-            
-            # Upload to Astra DB
-            song_id = astra_storage.upload_audio(str(file_path))
-            astra_storage.store_embedding(song_id, embedding)
-            astra_storage.store_metadata(song_id, meta)
-            
-            migrated += 1
-            click.echo(f"Migrated {meta.get('filename')} ({migrated}/{len(local_metadata)})")
-            
-        except Exception as e:
-            click.echo(f"Error migrating {meta.get('filename')}: {e}", err=True)
-    
-    click.echo(f"Migration complete! Migrated {migrated} songs to Astra DB.")
 
 if __name__ == '__main__':
     cli()

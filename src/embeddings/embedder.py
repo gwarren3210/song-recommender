@@ -5,8 +5,12 @@ import json
 import uuid
 from tqdm import tqdm
 from typing import Optional
-from .model_loader import load_model
-from .preprocessing import load_audio, preprocess_audio, extract_metadata
+from src.embeddings.model_loader import load_model
+from src.embeddings.preprocessing import (
+    load_audio,
+    preprocess_audio,
+    extract_metadata
+)
 from src.storage.backend import StorageBackend
 
 class AudioEmbedder:
@@ -25,6 +29,12 @@ class AudioEmbedder:
     def embed_file(self, file_path):
         """
         Generates an embedding for a single audio file.
+        
+        Args:
+            file_path: Path to audio file
+            
+        Returns:
+            numpy.ndarray: Normalized embedding vector, or None on error
         """
         audio, _ = load_audio(file_path)
         if audio is None:
@@ -49,13 +59,16 @@ class AudioEmbedder:
 
     def embed_library(self, input_dir):
         """
-        Embeds all audio files in a directory and stores in Astra DB.
+        Embeds all audio files in a directory and stores in the database.
         
         Args:
             input_dir: Directory containing audio files
         """
         audio_extensions = ('.mp3', '.wav', '.flac', '.m4a')
-        files = [f for f in os.listdir(input_dir) if f.lower().endswith(audio_extensions)]
+        files = [
+            f for f in os.listdir(input_dir)
+            if f.lower().endswith(audio_extensions)
+        ]
         
         metadata_list = []
         
@@ -85,4 +98,7 @@ class AudioEmbedder:
                 
                 metadata_list.append({**meta, 'song_id': song_id})
         
-        print(f"Finished embedding. {len(metadata_list)} songs processed and stored in Astra DB.")
+        print(
+            f"Finished embedding. {len(metadata_list)} songs "
+            "processed and stored in the database."
+        )

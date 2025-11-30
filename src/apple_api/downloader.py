@@ -4,11 +4,14 @@ from tqdm import tqdm
 
 def download_preview(url, save_path):
     """
+    Download audio preview from URL.
+    
     Args:
-        url (str): The URL of the audio file.
-        save_path (str): The local path to save the file.    
+        url: The URL of the audio file
+        save_path: The local path to save the file
+        
     Returns:
-        success (bool): True if successful, False otherwise.
+        bool: True if successful, False otherwise
     """
     try:
         response = requests.get(url, stream=True)
@@ -27,12 +30,14 @@ def download_preview(url, save_path):
 
 def batch_download(tracks, output_dir):
     """
+    Download multiple track previews in batch.
+    
     Args:
-        tracks (list): List of track dictionaries from the API.
-        output_dir (str): Directory to save files.
+        tracks: List of track dictionaries from the API
+        output_dir: Directory to save files
         
     Returns:
-        downloaded_paths (list): List of paths to downloaded files.
+        list: List of paths to downloaded files
     """
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)

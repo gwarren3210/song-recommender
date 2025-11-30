@@ -1,20 +1,32 @@
 """Dashboard page showing statistics and overview."""
 
 import streamlit as st
-from src.streamlit_app.cache.statsHelper import compute_stats_from_sample
+from src.streamlit_app.cache.statsHelper import compute_stats_from_database
 
 
 def render_dashboard():
-    """Render the dashboard page with statistics."""
+    """Render the dashboard page with real database statistics."""
     st.title("Dashboard")
+    st.markdown(
+        "**Real-time statistics from your entire music library**"
+    )
     
-    # Compute stats from sample (max 100 songs across 5 pages)
+    # Compute stats from entire database
     if 'dashboard_stats' not in st.session_state:
-        with st.spinner("Computing statistics from sample..."):
-            st.session_state.dashboard_stats = compute_stats_from_sample(
-                st.session_state.storage,
-                sample_size=100
+        with st.spinner("Loading database statistics..."):
+            st.session_state.dashboard_stats = compute_stats_from_database(
+                st.session_state.storage
             )
+    
+    # Add refresh button
+    col1, col2 = st.columns([3, 1])
+    with col2:
+        if st.button("Refresh Stats"):
+            with st.spinner("Refreshing statistics..."):
+                st.session_state.dashboard_stats = compute_stats_from_database(
+                    st.session_state.storage
+                )
+            st.rerun()
     
     stats = st.session_state.dashboard_stats
     
@@ -22,13 +34,11 @@ def render_dashboard():
         st.info("No songs in database.")
         return
     
-    st.info(f"Statistics computed from sample of {stats['sample_size']} songs (sampled across multiple pages).")
-    
     # Key metrics
     col1, col2, col3, col4 = st.columns(4)
     
     with col1:
-        st.metric("Songs Sampled", stats['sample_size'])
+        st.metric("Total Songs", stats['total_songs'])
     
     with col2:
         st.metric("Unique Artists", stats['unique_artists'])
@@ -68,10 +78,10 @@ def render_dashboard():
     # Recent songs
     st.subheader("Recently Added Songs")
     if stats['recent_songs']:
+        from src.streamlit_app.components.songCard import render_song_card
         for song in stats['recent_songs']:
-            title = song.get('title') or song.get('filename', 'Unknown')
-            artist = song.get('artist', 'Unknown Artist')
-            st.write(f"**{title}** by {artist}")
+            render_song_card(song, show_preview=False)
+            st.markdown("---")
     else:
         st.write("No recent songs available")
 

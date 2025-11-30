@@ -20,10 +20,20 @@ def render_browse():
     with st.spinner("Loading genres..."):
         available_genres = get_available_genres(st.session_state.storage)
     
+    # Calculate index for genre selectbox
+    if st.session_state.browse_genre == "All":
+        genre_index = 0
+    elif st.session_state.browse_genre in available_genres:
+        genre_index = available_genres.index(
+            st.session_state.browse_genre
+        ) + 1
+    else:
+        genre_index = 0
+    
     selected_genre = st.selectbox(
         "Filter by Genre",
         ["All"] + available_genres,
-        index=0 if st.session_state.browse_genre == "All" else (available_genres.index(st.session_state.browse_genre) + 1 if st.session_state.browse_genre in available_genres else 0),
+        index=genre_index,
         key="genre_filter"
     )
     
@@ -72,12 +82,21 @@ def render_browse():
         )
     
     if not songs:
-        genre_text = f" for genre '{selected_genre}'" if selected_genre != "All" else ""
+        if selected_genre != "All":
+            genre_text = f" for genre '{selected_genre}'"
+        else:
+            genre_text = ""
         st.info(f"No songs found on this page{genre_text}.")
         return
     
-    genre_text = f" (Genre: {selected_genre})" if selected_genre != "All" else ""
-    st.markdown(f"Showing {len(songs)} songs (page {st.session_state.browse_page}){genre_text}")
+    if selected_genre != "All":
+        genre_text = f" (Genre: {selected_genre})"
+    else:
+        genre_text = ""
+    st.markdown(
+        f"Showing {len(songs)} songs "
+        f"(page {st.session_state.browse_page}){genre_text}"
+    )
     st.markdown("---")
     
     # Display songs
@@ -88,11 +107,13 @@ def render_browse():
     # Navigation buttons
     col1, col2 = st.columns(2)
     with col1:
-        if st.session_state.browse_page > 1 and st.button("Previous Page"):
+        if (st.session_state.browse_page > 1 and
+                st.button("Previous Page")):
             st.session_state.browse_page -= 1
             st.rerun()
     with col2:
-        if len(songs) == page_size and st.button("Next Page"):
+        if (len(songs) == page_size and
+                st.button("Next Page")):
             st.session_state.browse_page += 1
             st.rerun()
 

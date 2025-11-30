@@ -7,7 +7,7 @@ class AppleMusicClient:
     LOOKUP_URL = "https://itunes.apple.com/lookup"
 
     def __init__(self):
-        pass
+        """Initialize Apple Music client."""
 
     def search(self, term, limit=20, entity="song", media="music", country_code=None):
         """
