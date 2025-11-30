@@ -1,9 +1,17 @@
+[TOC]
 # Song Vectorizer & Music Similarity Explorer
 
 ## Project Description
 The **Song Vectorizer & Music Similarity Explorer** is a Python-based system designed to analyze and explore music collections mathematically. By converting audio files into high-dimensional vector embeddings, the system can identify musically similar tracks and visualize the relationships between songs in a 2D space.
 
 Unlike generative AI models that create music, this tool focuses on **music intelligence**—understanding the content of audio files to power recommendations and discovery. It uses state-of-the-art audio embedding models (LAION-CLAP) to capture semantic and acoustic features of songs.
+
+## Live Deployment
+
+The application is deployed and available at:
+**https://songsimilarity.streamlit.app/**
+
+You can use the web interface directly without local installation.
 
 ## Directory Structure
 ```
@@ -33,6 +41,10 @@ song-reccomender/
 │   │   ├── pages/          # Individual pages (dashboard, search, browse, recommendations)
 │   │   └── components/     # Reusable UI components (song cards, audio player)
 │   └── cli.py              # Command-line interface entry point
+├── migrations/         # Database migration scripts
+│   ├── 001_initial_schema.cql
+│   ├── 002_postgres_schema.sql
+│   ├── 003_search_indexes.sql
 ├── requirements.txt
 └── README.md
 ```
@@ -145,7 +157,9 @@ python src/cli.py visualize --output_file visualization.html
 
 ### Web Interface (Streamlit)
 
-Launch the interactive web interface:
+**Live Deployment**: The application is available at **https://songsimilarity.streamlit.app/**
+
+To run locally:
 
 ```bash
 # Using the run script
