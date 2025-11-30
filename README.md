@@ -1,4 +1,21 @@
-[TOC]
+## Table of Contents
+
+- [Song Vectorizer & Music Similarity Explorer](#song-vectorizer--music-similarity-explorer)
+- [Project Description](#project-description)
+- [Live Deployment](#live-deployment)
+- [Directory Structure](#directory-structure)
+- [Features](#features)
+- [Installation](#installation)
+- [Usage](#usage)
+  - [Embed Songs](#embed-songs)
+  - [Download Songs (Apple Music)](#download-songs-apple-music)
+  - [Import Playlist from Apple Music](#import-playlist-from-apple-music)
+  - [Recommend](#recommend)
+    - [How Recommendations Work](#how-recommendations-work)
+  - [Visualize](#visualize)
+  - [Web Interface (Streamlit)](#web-interface-streamlit)
+- [Known Limitations](#known-limitations)
+  - [Recommendation Quality](#recommendation-quality)
 # Song Vectorizer & Music Similarity Explorer
 
 ## Project Description
